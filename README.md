@@ -33,6 +33,6 @@
 
 - 例如创建抢占式实例，执行运行 `python ecs.py` ，按提示操作
 
-    ![avatar](./images/ecs-demo.png)
+    ![ecs-demo](images/ecs-demo.png)
 
-    ![avatar](./images/ecs-price.png)
+    ![ecs-price](images/ecs-price.png)
