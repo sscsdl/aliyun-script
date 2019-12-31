@@ -5,6 +5,7 @@ import datetime
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.acs_exception.exceptions import ClientException
 from aliyunsdkcore.acs_exception.exceptions import ServerException
@@ -21,6 +22,7 @@ AccessKeyID = '<access-key-id>'
 AccessKeySecret = '<access-key-secret>'
 
 # 地域
+# https://help.aliyun.com/knowledge_detail/40654.html
 regionList = [
     ['深圳', 'cn-shenzhen'],
     ['杭州', 'cn-hangzhou'],
@@ -31,10 +33,11 @@ regionList = [
 # 实例规格族
 typeList = ['xn4', 'e4', 'n4', 'mn4'] #, 'n4', 'mn4', 'e3', 'n1', 'n2'
 
-def selectOption(tips, option):
+def selectOption(tips, option, printOut = True):
     ### 选择可选项 ###
-    for k, v in enumerate(option):
-        print("%-3s" % str(k + 1), v[0])
+    if printOut:
+        for k, v in enumerate(option):
+            print("%-3s" % str(k + 1), v[0])
     while True:
         arg = int(input(tips)) - 1
         if arg >=0 and arg < len(option):
@@ -44,22 +47,149 @@ def selectOption(tips, option):
     else:
         return arg
 
-# 选择地域
-# https://help.aliyun.com/knowledge_detail/40654.html
-RegionId = selectOption('选择地域：', regionList)
-print()
 
-client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
 
 # 选择操作
 action = selectOption('选择操作：', [
+    ['对比价格'],
+    ['创建实例'],
     ['查看实例'],
-    ['创建抢占式实例'],
     ['释放实例'],
 ])
 print()
 
+option = []
+
 if action == 0:
+    
+    # 选择地域
+    client = AcsClient(AccessKeyID, AccessKeySecret, 'cn-hangzhou')
+    print()
+    cpu = input('CPU核数：')
+    memory = input('内存大小(G)：')
+    gpu = input('GPU核数：')
+    if cpu == '':
+        cpu = 0
+    if memory == '':
+        memory = 0
+    if gpu == '':
+        gpu = 0
+    cpu = int(cpu)
+    memory = int(memory)
+    gpu = int(gpu)
+
+    print("No\tCPU\tMemory\tGPU\tBandwidth\tPps\tInstanceTypeId")
+    # for i in typeList:
+    # 查看InstanceTypeFamily下的规格
+    request = DescribeInstanceTypesRequest()
+    request.set_accept_format('json')
+    # request.set_InstanceTypeFamily('ecs.' + i)
+
+    response = client.do_action_with_exception(request)
+    response = json.loads(response)
+    # print(json.dumps(response,indent=2))
+    for item in response['InstanceTypes']['InstanceType']:
+        if cpu!=0 and item['CpuCoreCount'] != cpu:
+            continue
+        if memory!=0 and item['MemorySize'] != memory:
+            continue
+        if gpu!=0 and item['GPUAmount'] != gpu:
+            continue
+        if 'InstanceBandwidthRx' not in item:
+            item['InstanceBandwidthRx'] = 0
+        if 'InstancePpsRx' not in item:
+            item['InstancePpsRx'] = 0
+        option.append([
+            "\t" + 
+            str(item['CpuCoreCount']) + "\t" + 
+            str(int(item['MemorySize'])) + "\t" + 
+            str(item['GPUAmount']) + "\t" + 
+            str(item['InstanceBandwidthRx']/1024000)+'k' + "\t\t" + 
+            str(int(item['InstancePpsRx']/10000))+'W' + "\t" +
+            str(item['InstanceTypeId']), 
+            str(item['InstanceTypeId'])
+        ])
+    # exit()
+    instanceType = selectOption('选择规格No：', option)
+    print(instanceType)
+    print()
+    while True:
+
+        typePriceList = {}
+        start = time.time()
+        zoneMinList = {}
+        for region in regionList:
+            client = AcsClient(AccessKeyID, AccessKeySecret, region[1])
+
+            # 查看抢占式实例近30日价格
+
+            # start1 = time.time()
+            request = DescribeSpotPriceHistoryRequest()
+            request.set_accept_format('json')
+
+            request.set_NetworkType("vpc")
+            request.set_InstanceType(instanceType)
+            # day30 = (datetime.datetime.now() - datetime.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            # request.set_StartTime(day30)
+
+            response = client.do_action_with_exception(request)
+            # print(time.time()-start1, 's')
+            # print(json.dumps(json.loads(response),indent=2))
+            response = json.loads(response)
+            if not response['SpotPrices']['SpotPriceType']:
+                continue
+            priceDetail = {}
+            for i in response['SpotPrices']['SpotPriceType']:
+                if i['ZoneId'] in priceDetail:
+                    priceDetail[i['ZoneId']].append(i['SpotPrice'])
+                else:
+                    priceDetail[i['ZoneId']] = [i['SpotPrice']]
+            priceTotal = []
+            for i in priceDetail:
+                priceTotal.append([i, priceDetail[i][-1], sum(priceDetail[i])/len(priceDetail[i])])
+            # priceTotal = {
+            #           现价    均价
+            #     'a':[0.016, 0.0161],
+            #     'b':[0.016, 0.016],
+            #     'c':[0.016, 0.0162],
+            #     'd':[0.018, 0.014],
+            #     'e':[0.016, 0.015],
+            # }
+            # print(priceTotal)
+            # exit()
+            priceTotal.sort(key=lambda d: (d[1], d[2]))
+            if instanceType in typePriceList:
+                typePriceList[instanceType].append([region[1], priceTotal[0][0], priceTotal[0][1]])
+            else:
+                typePriceList[instanceType] = [[region[1], priceTotal[0][0], priceTotal[0][1]]]
+            # print(typePriceList)
+            # exit()
+        # print(typePriceList)
+        # exit()
+
+        # option = []
+        for instance, typeItem in typePriceList.items():
+            print(instance)
+            for zoneItem in typeItem:
+                print(zoneItem)
+                # option.append([instance, zoneItem[0], zoneItem[1]])
+            print()
+
+        # end = time.time()
+        # print(end-start, 's')
+        # print()
+
+        instanceType = selectOption('重新选择规格No：', option, False)
+        print(instanceType)
+        print()
+
+elif action == 2:
+    
+    # 选择地域
+    RegionId = selectOption('选择地域：', regionList)
+    client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
+    print()
+
     # 查看实例
     request = DescribeInstancesRequest()
     request.set_accept_format('json')
@@ -69,20 +199,52 @@ if action == 0:
 
 elif action == 1:
     
+    # 选择地域
+    RegionId = selectOption('选择地域：', regionList)
+    client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
+    print()
+
     # 查看规格 DescribeInstanceTypes
 
-    print("No\tCPU\tMemory\tGPU\tBandwidth\tPps\tInstanceTypeId")
+    typeAction = selectOption('选择操作：', [
+        ['查找规格'],
+        ['指定规格'],
+        ['预设规格'],
+    ])
+
     option = []
-    for i in typeList:
+
+    if typeAction == 0:
+        cpu = input('CPU核素：')
+        memory = input('内存大小(G)：')
+        gpu = input('GPU核素：')
+        if cpu == '':
+            cpu = 0
+        if memory == '':
+            memory = 0
+        if gpu == '':
+            gpu = 0
+        cpu = int(cpu)
+        memory = int(memory)
+        gpu = int(gpu)
+
+        print("No\tCPU\tMemory\tGPU\tBandwidth\tPps\tInstanceTypeId")
+        # for i in typeList:
         # 查看InstanceTypeFamily下的规格
         request = DescribeInstanceTypesRequest()
         request.set_accept_format('json')
-        request.set_InstanceTypeFamily('ecs.' + i)
+        # request.set_InstanceTypeFamily('ecs.' + i)
 
         response = client.do_action_with_exception(request)
         response = json.loads(response)
         # print(json.dumps(response,indent=2))
         for item in response['InstanceTypes']['InstanceType']:
+            if cpu!=0 and item['CpuCoreCount'] != cpu:
+                continue
+            if memory!=0 and item['MemorySize'] != memory:
+                continue
+            if gpu!=0 and item['GPUAmount'] != gpu:
+                continue
             if 'InstanceBandwidthRx' not in item:
                 item['InstanceBandwidthRx'] = 0
             if 'InstancePpsRx' not in item:
@@ -97,12 +259,46 @@ elif action == 1:
                 str(item['InstanceTypeId']), 
                 str(item['InstanceTypeId'])
             ])
-    # exit()
-    # InstanceType = input('输入规格InstanceType：')
-    InstanceType = selectOption('选择规格No：', option)
+        # exit()
+        # InstanceType = input('输入规格InstanceType：')
+        InstanceType = selectOption('选择规格No：', option)
+
+    elif typeAction == 1:
+        InstanceType = input('输入规格InstanceType：')
+
+    elif typeAction == 2:
+
+        print("No\tCPU\tMemory\tGPU\tBandwidth\tPps\tInstanceTypeId")
+        for i in typeList:
+            # 查看InstanceTypeFamily下的规格
+            request = DescribeInstanceTypesRequest()
+            request.set_accept_format('json')
+            request.set_InstanceTypeFamily('ecs.' + i)
+
+            response = client.do_action_with_exception(request)
+            response = json.loads(response)
+            # print(json.dumps(response,indent=2))
+            for item in response['InstanceTypes']['InstanceType']:
+                if 'InstanceBandwidthRx' not in item:
+                    item['InstanceBandwidthRx'] = 0
+                if 'InstancePpsRx' not in item:
+                    item['InstancePpsRx'] = 0
+                option.append([
+                    "\t" + 
+                    str(item['CpuCoreCount']) + "\t" + 
+                    str(int(item['MemorySize'])) + "\t" + 
+                    str(item['GPUAmount']) + "\t" + 
+                    str(item['InstanceBandwidthRx']/1024000)+'k' + "\t\t" + 
+                    str(int(item['InstancePpsRx']/10000))+'W' + "\t" +
+                    str(item['InstanceTypeId']), 
+                    str(item['InstanceTypeId'])
+                ])
+        # exit()
+        # InstanceType = input('输入规格InstanceType：')
+        InstanceType = selectOption('选择规格No：', option)
+
     print(InstanceType)
     print()
-
 
     # 查看抢占式实例近30日价格
 
@@ -124,6 +320,10 @@ elif action == 1:
         else:
             price[i['ZoneId']] = [i['SpotPrice']]
     
+    if price == {}:
+        print('没有可用区有卖该机型')
+        exit()
+
     num = selectOption('是否对比价格：', [
         ["是"], ["否"]
     ])
@@ -285,7 +485,12 @@ elif action == 1:
     #     response = json.loads(response)
     #     print(json.dumps(response, indent=2))
 
-elif action == 2:
+elif action == 3:
+
+    # 选择地域
+    RegionId = selectOption('选择地域：', regionList)
+    client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
+    print()
 
     InstanceId = input('输入实例 InstanceId：')
 
