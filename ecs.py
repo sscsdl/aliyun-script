@@ -4,7 +4,7 @@
 import datetime
 import json
 import matplotlib.pyplot as plt
-import numpy as np
+# import numpy as np
 import time
 from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.acs_exception.exceptions import ClientException
