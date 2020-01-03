@@ -61,13 +61,11 @@ print()
 option = []
 
 if action == 0:
+    # 对比价格
     
-    # 选择地域
-    client = AcsClient(AccessKeyID, AccessKeySecret, 'cn-hangzhou')
-    print()
-    cpu = input('CPU核数：')
-    memory = input('内存大小(G)：')
-    gpu = input('GPU核数：')
+    cpu = input('{:\u3000<8} : '.format('CPU核素'))
+    memory = input('{:\u3000<8} : '.format('内存大小(G)'))
+    gpu = input('{:\u3000<8} : '.format('GPU核素'))
     if cpu == '':
         cpu = 0
     if memory == '':
@@ -85,6 +83,7 @@ if action == 0:
     request.set_accept_format('json')
     # request.set_InstanceTypeFamily('ecs.' + i)
 
+    client = AcsClient(AccessKeyID, AccessKeySecret)
     response = client.do_action_with_exception(request)
     response = json.loads(response)
     # print(json.dumps(response,indent=2))
@@ -129,8 +128,8 @@ if action == 0:
 
             request.set_NetworkType("vpc")
             request.set_InstanceType(instanceType)
-            # day30 = (datetime.datetime.now() - datetime.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            # request.set_StartTime(day30)
+            day30 = (datetime.datetime.now() - datetime.timedelta(days=15)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            request.set_StartTime(day30)
 
             response = client.do_action_with_exception(request)
             # print(time.time()-start1, 's')
@@ -183,23 +182,9 @@ if action == 0:
         print(instanceType)
         print()
 
-elif action == 2:
-    
-    # 选择地域
-    RegionId = selectOption('选择地域：', regionList)
-    client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
-    print()
-
-    # 查看实例
-    request = DescribeInstancesRequest()
-    request.set_accept_format('json')
-    response = client.do_action_with_exception(request)
-    response = json.loads(response)
-    print(json.dumps(response, indent=2))
-
 elif action == 1:
+    # 创建实例
     
-    # 选择地域
     RegionId = selectOption('选择地域：', regionList)
     client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
     print()
@@ -215,9 +200,11 @@ elif action == 1:
     option = []
 
     if typeAction == 0:
-        cpu = input('CPU核素：')
-        memory = input('内存大小(G)：')
-        gpu = input('GPU核素：')
+        # 查找规格
+
+        cpu = input('{:\u3000<8} : '.format('CPU核素'))
+        memory = input('{:\u3000<8} : '.format('内存大小(G)'))
+        gpu = input('{:\u3000<8} : '.format('GPU核素'))
         if cpu == '':
             cpu = 0
         if memory == '':
@@ -264,37 +251,34 @@ elif action == 1:
         InstanceType = selectOption('选择规格No：', option)
 
     elif typeAction == 1:
+        # 指定规格
+
         InstanceType = input('输入规格InstanceType：')
 
     elif typeAction == 2:
+        # 预设规格
 
-        print("No\tCPU\tMemory\tGPU\tBandwidth\tPps\tInstanceTypeId")
-        for i in typeList:
-            # 查看InstanceTypeFamily下的规格
-            request = DescribeInstanceTypesRequest()
-            request.set_accept_format('json')
-            request.set_InstanceTypeFamily('ecs.' + i)
-
-            response = client.do_action_with_exception(request)
-            response = json.loads(response)
-            # print(json.dumps(response,indent=2))
-            for item in response['InstanceTypes']['InstanceType']:
-                if 'InstanceBandwidthRx' not in item:
-                    item['InstanceBandwidthRx'] = 0
-                if 'InstancePpsRx' not in item:
-                    item['InstancePpsRx'] = 0
-                option.append([
+        typeList = [                    # CPU   内存
+            ["ecs.xn4.small", 1, 1],    # 1     1
+            ["ecs.n4.small", 1, 2],     # 1     2
+            ["ecs.mn4.small", 1, 4],    # 1     4
+            ["ecs.e4.small", 1, 8],     # 1     8
+            ["ecs.n4.large", 2, 4],     # 2     4
+            ["ecs.mn4.large", 2, 8],    # 2     8
+            ["ecs.n4.xlarge", 4, 8],    # 4     8
+            ["ecs.mn4.xlarge", 4, 16],  # 4     16
+        ]
+        print("No\tCPU\tMemory\tInstanceTypeId")
+        for item in typeList:
+            option.append([
+                "\t" + 
                     "\t" + 
-                    str(item['CpuCoreCount']) + "\t" + 
-                    str(int(item['MemorySize'])) + "\t" + 
-                    str(item['GPUAmount']) + "\t" + 
-                    str(item['InstanceBandwidthRx']/1024000)+'k' + "\t\t" + 
-                    str(int(item['InstancePpsRx']/10000))+'W' + "\t" +
-                    str(item['InstanceTypeId']), 
-                    str(item['InstanceTypeId'])
-                ])
-        # exit()
-        # InstanceType = input('输入规格InstanceType：')
+                "\t" + 
+                str(item[1]) + "\t" + 
+                str(item[2]) + "\t" + 
+                str(item[0]),
+                str(item[0])
+            ])
         InstanceType = selectOption('选择规格No：', option)
 
     print(InstanceType)
@@ -485,9 +469,25 @@ elif action == 1:
     #     response = json.loads(response)
     #     print(json.dumps(response, indent=2))
 
-elif action == 3:
+elif action == 2:
+    # 查看实例
+    
+    RegionId = selectOption('选择地域：', regionList)
+    client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
+    print()
 
-    # 选择地域
+    # 查看实例
+    request = DescribeInstancesRequest()
+    request.set_accept_format('json')
+    response = client.do_action_with_exception(request)
+    response = json.loads(response)
+    print(json.dumps(response, indent=2))
+    for instance in response['Instances']['Instance']:
+        print(instance['ZoneId'], instance['InstanceId'], instance['PublicIpAddress']['IpAddress'][0], instance['Cpu'], instance['Memory']/1024, instance['GPUAmount'], instance['OSNameEn'])
+
+elif action == 3:
+    # 释放实例
+
     RegionId = selectOption('选择地域：', regionList)
     client = AcsClient(AccessKeyID, AccessKeySecret, RegionId)
     print()
@@ -505,5 +505,3 @@ elif action == 3:
     response = client.do_action_with_exception(request)
     print(json.dumps(json.loads(response),indent=2))
 
-# 没有设置虚拟交换机ID：
-# aliyunsdkcore.acs_exception.exceptions.ServerException: HTTP Status: 403 Error:OperationDenied.InvalidNetworkType The specified network type is not available in the specified region.
